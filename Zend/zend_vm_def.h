@@ -4316,6 +4316,10 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 						zval_ptr_dtor(&array);
 						HANDLE_EXCEPTION();
 					}
+					if (!key) {
+						/* failure in get_current_key */
+						ZEND_VM_JMP(EX(op_array)->opcodes+opline->op2.opline_num);
+					}
 				} else {
 					key_type = HASH_KEY_IS_LONG;
 					int_key = iter->index;
@@ -4335,28 +4339,33 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 	}
 
 	if (use_key) {
-		zval *tmpkey = &EX_T((opline+1)->result.var).tmp_var;
+		zval *retkey = NULL;
 
 		switch (key_type) {
 			case 0: // key is a zval
-				ZVAL_COPY_VALUE(tmpkey, *key);
-				zval_copy_ctor(tmpkey);
-				zval_ptr_dtor(key);
+				Z_ADDREF_PP(key);
+				retkey = *key;
 				break;
 			case HASH_KEY_IS_STRING:
-				Z_STRVAL_P(tmpkey) = (char*)str_key;
-				Z_STRLEN_P(tmpkey) = str_key_len-1;
-				Z_TYPE_P(tmpkey) = IS_STRING;
+				MAKE_STD_ZVAL(retkey);
+				Z_STRVAL_P(retkey) = (char*)str_key;
+				Z_STRLEN_P(retkey) = str_key_len-1;
+				Z_TYPE_P(retkey)   = IS_STRING;
 				break;
 			case HASH_KEY_IS_LONG:
-				Z_LVAL_P(tmpkey) = int_key;
-				Z_TYPE_P(tmpkey) = IS_LONG;
+				MAKE_STD_ZVAL(retkey);
+				Z_LVAL_P(retkey) = int_key;
+				Z_TYPE_P(retkey) = IS_LONG;
 				break;
 			default:
 			case HASH_KEY_NON_EXISTANT:
-				ZVAL_NULL(tmpkey);
+				MAKE_STD_ZVAL(retkey);
+				ZVAL_NULL(retkey);
 				break;
 		}
+
+		PZVAL_LOCK(retkey);
+		AI_SET_PTR(&EX_T((opline+1)->result.var), retkey);
 	}
 
 	CHECK_EXCEPTION();
