@@ -4364,7 +4364,6 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 				break;
 		}
 
-		PZVAL_LOCK(retkey);
 		AI_SET_PTR(&EX_T((opline+1)->result.var), retkey);
 	}
 
