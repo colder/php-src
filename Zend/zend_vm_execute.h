@@ -12039,7 +12039,6 @@ static int ZEND_FASTCALL  ZEND_FE_FETCH_SPEC_VAR_HANDLER(ZEND_OPCODE_HANDLER_ARG
 				break;
 		}
 
-		PZVAL_LOCK(retkey);
 		AI_SET_PTR(&EX_T((opline+1)->result.var), retkey);
 	}
 

@@ -949,12 +949,17 @@ static void spl_pqueue_it_get_current_data(zend_object_iterator *iter, zval ***d
 }
 /* }}} */
 
-static int spl_heap_it_get_current_key(zend_object_iterator *iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC) /* {{{ */
+static void spl_heap_it_get_current_key(zend_object_iterator *iter, zval ***key TSRMLS_DC) /* {{{ */
 {
 	spl_heap_it *iterator = (spl_heap_it *)iter;
 
-	*int_key = (ulong) iterator->object->heap->count - 1;
-	return HASH_KEY_IS_LONG;
+	if (iterator->intern.key) {
+		zval_ptr_dtor(&iterator->intern.key);
+	}
+	MAKE_STD_ZVAL(iterator->intern.key);
+	ZVAL_LONG(iterator->intern.key, (ulong) iterator->object->heap->count-1);
+
+	*key = &iterator->intern.key;
 }
 /* }}} */
 
@@ -1116,6 +1121,7 @@ zend_object_iterator *spl_heap_get_iterator(zend_class_entry *ce, zval *object, 
 	iterator->intern.it.funcs = &spl_heap_it_funcs;
 	iterator->intern.ce       = ce;
 	iterator->intern.value    = NULL;
+	iterator->intern.key      = NULL;
 	iterator->flags           = heap_object->flags;
 	iterator->object          = heap_object;
 
@@ -1140,6 +1146,7 @@ zend_object_iterator *spl_pqueue_get_iterator(zend_class_entry *ce, zval *object
 	iterator->intern.it.funcs = &spl_pqueue_it_funcs;
 	iterator->intern.ce       = ce;
 	iterator->intern.value    = NULL;
+	iterator->intern.key      = NULL;
 	iterator->flags           = heap_object->flags;
 	iterator->object          = heap_object;
 

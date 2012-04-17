@@ -1598,8 +1598,8 @@ static int phar_build(zend_object_iterator *iter, void *puser TSRMLS_DC) /* {{{ 
 				return ZEND_HASH_APPLY_STOP;
 			}
 
-			if (iter->funcs->get_current_key) {
-				key_type = iter->funcs->get_current_key(iter, &key, &str_key_len, &int_key TSRMLS_CC);
+			if (0 && iter->funcs->get_current_key) {
+//				key_type = iter->funcs->get_current_key(iter, &key, &str_key_len, &int_key TSRMLS_CC);
 
 				if (EG(exception)) {
 					return ZEND_HASH_APPLY_STOP;
@@ -1761,8 +1761,8 @@ phar_spl_fileinfo:
 			return ZEND_HASH_APPLY_STOP;
 		}
 	} else {
-		if (iter->funcs->get_current_key) {
-			key_type = iter->funcs->get_current_key(iter, &key, &str_key_len, &int_key TSRMLS_CC);
+		if (0 && iter->funcs->get_current_key) {
+//			key_type = iter->funcs->get_current_key(iter, &key, &str_key_len, &int_key TSRMLS_CC);
 
 			if (EG(exception)) {
 				return ZEND_HASH_APPLY_STOP;

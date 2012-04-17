@@ -49,6 +49,7 @@ foreach ($f as $k=>$v) {
 
 $f->rewind();
 
+/*
 $indent = " ";
 
 echo "\n\n\n-----( Nested iteration: )-----\n";
@@ -63,6 +64,7 @@ foreach ($f as $k=>$v) {
 	$indent = " ";
 	
 }
+*/
 
 ?>
 ===DONE===

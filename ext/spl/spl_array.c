@@ -994,26 +994,46 @@ static void spl_array_it_get_current_data(zend_object_iterator *iter, zval ***da
 }
 /* }}} */
 
-static int spl_array_it_get_current_key(zend_object_iterator *iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC) /* {{{ */
+static void spl_array_it_get_current_key(zend_object_iterator *iter, zval ***key TSRMLS_DC) /* {{{ */
 {
 	spl_array_it       *iterator = (spl_array_it *)iter;
 	spl_array_object   *object   = iterator->object;
 	HashTable          *aht      = spl_array_get_hash_table(object, 0 TSRMLS_CC);
 
 	if (object->ar_flags & SPL_ARRAY_OVERLOADED_KEY) {
-		return zend_user_it_get_current_key(iter, str_key, str_key_len, int_key TSRMLS_CC);
+		zend_user_it_get_current_key(iter, key TSRMLS_CC);
 	} else {
+		char *str_key = NULL;
+		uint str_key_len;
+		ulong int_key;
+
+		if (iterator->intern.key) {
+			zval_ptr_dtor(&iterator->intern.key);
+		}
+		MAKE_STD_ZVAL(iterator->intern.key);
+
 		if (!aht) {
-			php_error_docref(NULL TSRMLS_CC, E_NOTICE, "ArrayIterator::current(): Array was modified outside object and is no longer an array");
-			return HASH_KEY_NON_EXISTANT;
+			php_error_docref(NULL TSRMLS_CC, E_NOTICE, "ArrayIterator::key(): Array was modified outside object and is no longer an array");
+			*key = NULL;
+			return;
 		}
 	
 		if ((object->ar_flags & SPL_ARRAY_IS_REF) && spl_hash_verify_pos_ex(object, aht TSRMLS_CC) == FAILURE) {
-			php_error_docref(NULL TSRMLS_CC, E_NOTICE, "ArrayIterator::current(): Array was modified outside object and internal position is no longer valid");
-			return HASH_KEY_NON_EXISTANT;
+			php_error_docref(NULL TSRMLS_CC, E_NOTICE, "ArrayIterator::key(): Array was modified outside object and internal position is no longer valid");
+			*key = NULL;
+			return;
 		}
 	
-		return zend_hash_get_current_key_ex(aht, str_key, str_key_len, int_key, 1, &object->pos);
+		switch(zend_hash_get_current_key_ex(aht, &str_key, &str_key_len, &int_key, 1, &object->pos)) {
+			case HASH_KEY_IS_STRING:
+				ZVAL_STRINGL(iterator->intern.key, str_key, str_key_len-1, 0);
+				break;
+			case HASH_KEY_IS_LONG:
+				ZVAL_LONG(iterator->intern.key, int_key);
+				break;
+		}
+
+		*key = &iterator->intern.key;
 	}
 }
 /* }}} */
@@ -1147,6 +1167,7 @@ zend_object_iterator *spl_array_get_iterator(zend_class_entry *ce, zval *object,
 	iterator->intern.it.funcs = &spl_array_it_funcs;
 	iterator->intern.ce = ce;
 	iterator->intern.value = NULL;
+	iterator->intern.key = NULL;
 	iterator->object = array_object;
 	
 	return (zend_object_iterator*)iterator;

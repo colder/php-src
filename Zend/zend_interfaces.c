@@ -205,7 +205,9 @@ ZEND_API void zend_user_it_get_current_key(zend_object_iterator *_iter,  zval **
 	zend_user_iterator *iter = (zend_user_iterator*)_iter;
 	zval *object = (zval*)iter->it.data;
 
-	zend_call_method_with_0_params(&object, iter->ce, &iter->ce->iterator_funcs.zf_key, "key", &iter->key);
+	if (!iter->key) {
+		zend_call_method_with_0_params(&object, iter->ce, &iter->ce->iterator_funcs.zf_key, "key", &iter->key);
+	}
 
 	*key = &iter->key;
 }
