@@ -132,6 +132,10 @@ static void php_dom_iterator_dtor(zend_object_iterator *iter TSRMLS_DC) /* {{{ *
 		zval_ptr_dtor((zval**)&iterator->curobj);
 	}
 
+	if (iterator->curkey) {
+		zval_ptr_dtor((zval**)&iterator->curkey);
+	}
+
 	efree(iterator);
 }
 /* }}} */
@@ -157,21 +161,25 @@ static void php_dom_iterator_current_data(zend_object_iterator *iter, zval ***da
 }
 /* }}} */
 
-static int php_dom_iterator_current_key(zend_object_iterator *iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC) /* {{{ */
+static void php_dom_iterator_current_key(zend_object_iterator *iter, zval ***key TSRMLS_DC) /* {{{ */
 {
 	zval *curobj;
 	xmlNodePtr curnode = NULL;
 	dom_object *intern;
 	zval *object;
-	int namelen;
+	uint namelen;
 
 	php_dom_iterator *iterator = (php_dom_iterator *)iter;
 
 	object = (zval *)iterator->intern.data;
 
+	if (iterator->curkey) {
+		zval_ptr_dtor(&iterator->curkey);
+	}
+	MAKE_STD_ZVAL(iterator->curkey);
+
 	if (instanceof_function(Z_OBJCE_P(object), dom_nodelist_class_entry TSRMLS_CC)) {
-		*int_key = iter->index;
-		return HASH_KEY_IS_LONG;
+		ZVAL_LONG(iterator->curkey, iter->index);
 	} else {
 		curobj = iterator->curobj;
 
@@ -179,14 +187,19 @@ static int php_dom_iterator_current_key(zend_object_iterator *iter, char **str_k
 		if (intern != NULL && intern->ptr != NULL) {
 			curnode = (xmlNodePtr)((php_libxml_node_ptr *)intern->ptr)->node;
 		} else {
-			return HASH_KEY_NON_EXISTANT;
+			// TODO: error?
+			ZVAL_NULL(iterator->curkey);
 		}
 
 		namelen = xmlStrlen(curnode->name);
-		*str_key = estrndup(curnode->name, namelen);
-		*str_key_len = namelen + 1;
-		return HASH_KEY_IS_STRING;
+
+		Z_STRVAL_P(iterator->curkey) = estrndup(curnode->name, namelen);
+		Z_STRLEN_P(iterator->curkey) = namelen + 1;
+
+		Z_TYPE_P(iterator->curkey) = IS_STRING;
 	}
+
+	*key = &iterator->curkey;
 }
 /* }}} */
 
@@ -286,6 +299,8 @@ zend_object_iterator *php_dom_get_iterator(zend_class_entry *ce, zval *object, i
 	Z_ADDREF_P(object);
 	iterator->intern.data = (void*)object;
 	iterator->intern.funcs = &php_dom_iterator_funcs;
+	iterator->curobj = NULL;
+	iterator->curkey = NULL;
 
 	intern = (dom_object *)zend_object_store_get_object(object TSRMLS_CC);
 	objmap = (dom_nnodemap_object *)intern->ptr;
