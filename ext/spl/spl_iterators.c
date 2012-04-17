@@ -190,16 +190,16 @@ static void spl_recursive_it_get_current_data(zend_object_iterator *iter, zval *
 	sub_iter->funcs->get_current_data(sub_iter, data TSRMLS_CC);
 }
 
-static int spl_recursive_it_get_current_key(zend_object_iterator *iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC)
+static void spl_recursive_it_get_current_key(zend_object_iterator *iter, zval ***key TSRMLS_DC)
 {
 	spl_recursive_it_object   *object = (spl_recursive_it_object*)iter->data;
 	zend_object_iterator      *sub_iter = object->iterators[object->level].iterator;
 
 	if (sub_iter->funcs->get_current_key) {
-		return sub_iter->funcs->get_current_key(sub_iter, str_key, str_key_len, int_key TSRMLS_CC);
+		sub_iter->funcs->get_current_key(sub_iter, key TSRMLS_CC);
 	} else {
-		*int_key = iter->index;
-		return HASH_KEY_IS_LONG;
+		//*int_key = iter->index;
+		//return HASH_KEY_IS_LONG;
 	}
 }
 
@@ -617,19 +617,10 @@ SPL_METHOD(RecursiveIteratorIterator, key)
 	}
 
 	if (iterator->funcs->get_current_key) {
-		char *str_key;
-		uint str_key_len;
-		ulong int_key;
-
-		switch (iterator->funcs->get_current_key(iterator, &str_key, &str_key_len, &int_key TSRMLS_CC)) {
-			case HASH_KEY_IS_LONG:
-				RETURN_LONG(int_key);
-				break;
-			case HASH_KEY_IS_STRING:
-				RETURN_STRINGL(str_key, str_key_len-1, 0);
-				break;
-			default:
-				RETURN_NULL();
+		zval **key;
+		iterator->funcs->get_current_data(iterator, &key TSRMLS_CC);
+		if (key && *key) {
+			RETURN_ZVAL(*key, 1, 0);
 		}
 	} else {
 		RETURN_NULL();
@@ -1171,19 +1162,10 @@ SPL_METHOD(RecursiveTreeIterator, key)
 	}
 
 	if (iterator->funcs->get_current_key) {
-		char *str_key;
-		uint str_key_len;
-		ulong int_key;
-
-		switch (iterator->funcs->get_current_key(iterator, &str_key, &str_key_len, &int_key TSRMLS_CC)) {
-			case HASH_KEY_IS_LONG:
-				ZVAL_LONG(&key, int_key);
-				break;
-			case HASH_KEY_IS_STRING:
-				ZVAL_STRINGL(&key, str_key, str_key_len-1, 0);
-				break;
-			default:
-				ZVAL_NULL(&key);
+		zval **itkey;
+		iterator->funcs->get_current_key(iterator, &itkey TSRMLS_CC);
+		if (itkey && *itkey) {
+			ZVAL_ZVAL(&key, *itkey, 1, 1);
 		}
 	} else {
 		ZVAL_NULL(&key);
@@ -1588,9 +1570,9 @@ static inline void spl_dual_it_free(spl_dual_it_object *intern TSRMLS_DC)
 		zval_ptr_dtor(&intern->current.data);
 		intern->current.data = NULL;
 	}
-	if (intern->current.str_key) {
-		efree(intern->current.str_key);
-		intern->current.str_key = NULL;
+	if (intern->current.key) {
+		zval_ptr_dtor(&intern->current.key);
+		intern->current.key= NULL;
 	}
 	if (intern->dit_type == DIT_CachingIterator || intern->dit_type == DIT_RecursiveCachingIterator) {
 		if (intern->u.caching.zstr) {
@@ -1634,11 +1616,16 @@ static inline int spl_dual_it_fetch(spl_dual_it_object *intern, int check_more T
 			Z_ADDREF_P(intern->current.data);
 		}
 		if (intern->inner.iterator->funcs->get_current_key) {
-			intern->current.key_type = intern->inner.iterator->funcs->get_current_key(intern->inner.iterator, &intern->current.str_key, &intern->current.str_key_len, &intern->current.int_key TSRMLS_CC);
+			zval **key;
+			intern->inner.iterator->funcs->get_current_key(intern->inner.iterator, &key TSRMLS_CC);
+			if (key && *key) {
+				intern->current.key = *key;
+				Z_ADDREF_P(intern->current.key);
+			}
 		} else {
-			intern->current.key_type = HASH_KEY_IS_LONG;
-			intern->current.int_key = intern->current.pos;
+			intern->current.key = NULL; //TODO
 		}
+
 		return EG(exception) ? FAILURE : SUCCESS;
 	}
 	return FAILURE;
@@ -1709,14 +1696,11 @@ SPL_METHOD(dual_it, key)
 	
 	SPL_FETCH_AND_CHECK_DUAL_IT(intern, getThis());
 
-	if (intern->current.data) {
-		if (intern->current.key_type == HASH_KEY_IS_STRING) {
-			RETURN_STRINGL(intern->current.str_key, intern->current.str_key_len-1, 1);
-		} else {
-			RETURN_LONG(intern->current.int_key);
-		}
+	if (intern->current.data && intern->current.key) {
+		RETURN_ZVAL(intern->current.key, 1, 0);
+	} else {
+		RETURN_NULL();
 	}
-	RETURN_NULL();
 } /* }}} */
 
 /* {{{ proto mixed FilterIterator::current()
@@ -1938,11 +1922,7 @@ SPL_METHOD(CallbackFilterIterator, accept)
 	}
 	
 	INIT_PZVAL(&zkey);
-	if (intern->current.key_type == HASH_KEY_IS_LONG) {
-		ZVAL_LONG(&zkey, intern->current.int_key);
-	} else {
-		ZVAL_STRINGL(&zkey, intern->current.str_key, intern->current.str_key_len-1, 0);
-	}
+	ZVAL_ZVAL(&zkey, intern->current.key, 1, 0);
 
 	params[0] = &intern->current.data;
 	params[1] = &zkey_p;
@@ -1969,7 +1949,7 @@ SPL_METHOD(CallbackFilterIterator, accept)
 SPL_METHOD(RegexIterator, accept)
 {
 	spl_dual_it_object *intern;
-	char       *subject, tmp[32], *result;
+	char       *subject, *result;
 	int        subject_len, use_copy, count = 0, result_len;
 	zval       subject_copy, zcount, *replacement, tmp_replacement;
 	
@@ -1984,24 +1964,17 @@ SPL_METHOD(RegexIterator, accept)
 	}
 	
 	if (intern->u.regex.flags & REGIT_USE_KEY) {
-		if (intern->current.key_type == HASH_KEY_IS_LONG) {
-			subject_len = slprintf(tmp, sizeof(tmp), "%ld", intern->current.int_key);
-			subject = &tmp[0];
-			use_copy = 0;
-		} else {
-			subject_len = intern->current.str_key_len - 1;
-			subject = estrndup(intern->current.str_key, subject_len);
-			use_copy = 1;
-		}
+		zend_make_printable_zval(intern->current.key, &subject_copy, &use_copy);
 	} else {
 		zend_make_printable_zval(intern->current.data, &subject_copy, &use_copy);
-		if (use_copy) {
-			subject = Z_STRVAL(subject_copy);
-			subject_len = Z_STRLEN(subject_copy);
-		} else {
-			subject = Z_STRVAL_P(intern->current.data);
-			subject_len = Z_STRLEN_P(intern->current.data);
-		}
+	}
+
+	if (use_copy) {
+		subject = Z_STRVAL(subject_copy);
+		subject_len = Z_STRLEN(subject_copy);
+	} else {
+		subject = Z_STRVAL_P(intern->current.data);
+		subject_len = Z_STRLEN_P(intern->current.data);
 	}
 
 	switch (intern->u.regex.mode)
@@ -2049,12 +2022,9 @@ SPL_METHOD(RegexIterator, accept)
 		result = php_pcre_replace_impl(intern->u.regex.pce, subject, subject_len, replacement, 0, &result_len, -1, &count TSRMLS_CC);
 		
 		if (intern->u.regex.flags & REGIT_USE_KEY) {
-			if (intern->current.key_type != HASH_KEY_IS_LONG) {
-				efree(intern->current.str_key);
-			}
-			intern->current.key_type = HASH_KEY_IS_STRING;
-			intern->current.str_key = result;
-			intern->current.str_key_len = result_len + 1;
+			zval_ptr_dtor(&intern->current.key);
+			MAKE_STD_ZVAL(intern->current.key);
+			ZVAL_STRINGL(intern->current.key, result, result_len, 0);
 		} else {
 			zval_ptr_dtor(&intern->current.data);
 			MAKE_STD_ZVAL(intern->current.data);
@@ -2591,10 +2561,12 @@ static inline void spl_caching_it_next(spl_dual_it_object *intern TSRMLS_DC)
 			
 			MAKE_STD_ZVAL(zcacheval);
 			ZVAL_ZVAL(zcacheval, intern->current.data, 1, 0);
-			if (intern->current.key_type == HASH_KEY_IS_LONG) {
-				add_index_zval(intern->u.caching.zcache, intern->current.int_key, zcacheval);
+			if (Z_TYPE_P(intern->current.key) == IS_STRING) {
+				zend_symtable_update(HASH_OF(intern->u.caching.zcache), Z_STRVAL_P(intern->current.key), Z_STRLEN_P(intern->current.key), &zcacheval, sizeof(void*), NULL);
+			} else if (Z_TYPE_P(intern->current.key) == IS_LONG) {
+				add_index_zval(intern->u.caching.zcache, Z_LVAL_P(intern->current.key), zcacheval);
 			} else {
-				zend_symtable_update(HASH_OF(intern->u.caching.zcache), intern->current.str_key, intern->current.str_key_len, &zcacheval, sizeof(void*), NULL);
+				// TODO: error, invalid key for caching
 			}
 		}
 		/* Recursion ? */
@@ -2753,13 +2725,8 @@ SPL_METHOD(CachingIterator, __toString)
 		return;
 	}
 	if (intern->u.caching.flags & CIT_TOSTRING_USE_KEY) {
-		if (intern->current.key_type == HASH_KEY_IS_STRING) {
-			RETURN_STRINGL(intern->current.str_key, intern->current.str_key_len-1, 1);
-		} else {
-			RETVAL_LONG(intern->current.int_key);
-			convert_to_string(return_value);
-			return;
-		}
+		MAKE_COPY_ZVAL(&intern->current.key, return_value);
+		convert_to_string(return_value);
 	} else if (intern->u.caching.flags & CIT_TOSTRING_USE_CURRENT) {
 		MAKE_COPY_ZVAL(&intern->current.data, return_value);
 		convert_to_string(return_value);
@@ -3121,18 +3088,10 @@ SPL_METHOD(NoRewindIterator, key)
 	SPL_FETCH_AND_CHECK_DUAL_IT(intern, getThis());
 
 	if (intern->inner.iterator->funcs->get_current_key) {
-		char *str_key;
-		uint str_key_len;
-		ulong int_key;
-		switch (intern->inner.iterator->funcs->get_current_key(intern->inner.iterator, &str_key, &str_key_len, &int_key TSRMLS_CC)) {
-			case HASH_KEY_IS_LONG:
-				RETURN_LONG(int_key);
-				break;
-			case HASH_KEY_IS_STRING:
-				RETURN_STRINGL(str_key, str_key_len-1, 0);
-				break;
-			default:
-				RETURN_NULL();
+		zval **key;
+		intern->inner.iterator->funcs->get_current_key(intern->inner.iterator, &key TSRMLS_CC);
+		if (key && *key) {
+			RETURN_ZVAL(*key, 1, 0);
 		}
 	} else {
 		RETURN_NULL();
@@ -3501,10 +3460,6 @@ done:
 static int spl_iterator_to_array_apply(zend_object_iterator *iter, void *puser TSRMLS_DC) /* {{{ */
 {
 	zval                    **data, *return_value = (zval*)puser;
-	char                    *str_key;
-	uint                    str_key_len;
-	ulong                   int_key;
-	int                     key_type;
 
 	iter->funcs->get_current_data(iter, &data TSRMLS_CC);
 	if (EG(exception)) {
@@ -3514,20 +3469,24 @@ static int spl_iterator_to_array_apply(zend_object_iterator *iter, void *puser T
 		return ZEND_HASH_APPLY_STOP;
 	}
 	if (iter->funcs->get_current_key) {
-		key_type = iter->funcs->get_current_key(iter, &str_key, &str_key_len, &int_key TSRMLS_CC);
+		zval **key;
+		iter->funcs->get_current_key(iter, &key TSRMLS_CC);
 		if (EG(exception)) {
 			return ZEND_HASH_APPLY_STOP;
 		}
 		Z_ADDREF_PP(data);
-		switch(key_type) {
-			case HASH_KEY_IS_STRING:
-				add_assoc_zval_ex(return_value, str_key, str_key_len, *data);
-				efree(str_key);
+		switch(Z_TYPE_PP(key)) {
+			case IS_STRING:
+				add_assoc_zval_ex(return_value, Z_STRVAL_PP(key), Z_STRLEN_PP(key)+1, *data);
 				break;
-			case HASH_KEY_IS_LONG:
-				add_index_zval(return_value, int_key, *data);
+			case IS_LONG:
+				add_index_zval(return_value, Z_LVAL_PP(key), *data);
+				break;
+			default:
+				// TODO: warning
 				break;
 		}
+		zval_ptr_dtor(key);
 	} else {
 		Z_ADDREF_PP(data);
 		add_next_index_zval(return_value, *data);
