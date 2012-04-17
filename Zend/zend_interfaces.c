@@ -136,6 +136,11 @@ ZEND_API void zend_user_it_invalidate_current(zend_object_iterator *_iter TSRMLS
 		zval_ptr_dtor(&iter->value);
 		iter->value = NULL;
 	}
+
+	if (iter->key) {
+		zval_ptr_dtor(&iter->key);
+		iter->key = NULL;
+	}
 }
 /* }}} */
 
@@ -195,48 +200,14 @@ static int zend_user_it_get_current_key_default(zend_object_iterator *_iter, cha
 /* }}} */
 
 /* {{{ zend_user_it_get_current_key */
-ZEND_API int zend_user_it_get_current_key(zend_object_iterator *_iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC)
+ZEND_API void zend_user_it_get_current_key(zend_object_iterator *_iter,  zval ***key TSRMLS_DC)
 {
 	zend_user_iterator *iter = (zend_user_iterator*)_iter;
 	zval *object = (zval*)iter->it.data;
-	zval *retval;
 
-	zend_call_method_with_0_params(&object, iter->ce, &iter->ce->iterator_funcs.zf_key, "key", &retval);
+	zend_call_method_with_0_params(&object, iter->ce, &iter->ce->iterator_funcs.zf_key, "key", &iter->key);
 
-	if (!retval) {
-		*int_key = 0;
-		if (!EG(exception))
-		{
-			zend_error(E_WARNING, "Nothing returned from %s::key()", iter->ce->name);
-		}
-		return HASH_KEY_IS_LONG;
-	}
-	switch (Z_TYPE_P(retval)) {
-		default:
-			zend_error(E_WARNING, "Illegal type returned from %s::key()", iter->ce->name);
-		case IS_NULL:
-			*int_key = 0;
-			zval_ptr_dtor(&retval);
-			return HASH_KEY_IS_LONG;
-
-		case IS_STRING:
-			*str_key = estrndup(Z_STRVAL_P(retval), Z_STRLEN_P(retval));
-			*str_key_len = Z_STRLEN_P(retval)+1;
-			zval_ptr_dtor(&retval);
-			return HASH_KEY_IS_STRING;
-
-		case IS_DOUBLE:
-			*int_key = (long)Z_DVAL_P(retval);
-			zval_ptr_dtor(&retval);
-			return HASH_KEY_IS_LONG;
-
-		case IS_RESOURCE:
-		case IS_BOOL:
-		case IS_LONG:
-			*int_key = (long)Z_LVAL_P(retval);
-			zval_ptr_dtor(&retval);
-			return HASH_KEY_IS_LONG;
-	}
+	*key = &iter->key;
 }
 /* }}} */
 
@@ -287,7 +258,8 @@ static zend_object_iterator *zend_user_it_get_iterator(zend_class_entry *ce, zva
 	iterator->it.data = (void*)object;
 	iterator->it.funcs = ce->iterator_funcs.funcs;
 	iterator->ce = Z_OBJCE_P(object);
-	iterator->value = NULL;
+    iterator->value = NULL;
+	iterator->key = NULL;
 	return (zend_object_iterator*)iterator;
 }
 /* }}} */

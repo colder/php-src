@@ -36,6 +36,7 @@ typedef struct _zend_user_iterator {
 	zend_object_iterator     it;
 	zend_class_entry         *ce;
 	zval                     *value;
+	zval                     *key;
 } zend_user_iterator;
 
 ZEND_API zval* zend_call_method(zval **object_pp, zend_class_entry *obj_ce, zend_function **fn_proxy, const char *function_name, int function_name_len, zval **retval_ptr_ptr, int param_count, zval* arg1, zval* arg2 TSRMLS_DC);
@@ -51,7 +52,7 @@ ZEND_API zval* zend_call_method(zval **object_pp, zend_class_entry *obj_ce, zend
 
 ZEND_API void zend_user_it_rewind(zend_object_iterator *_iter TSRMLS_DC);
 ZEND_API int zend_user_it_valid(zend_object_iterator *_iter TSRMLS_DC);
-ZEND_API int zend_user_it_get_current_key(zend_object_iterator *_iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC);
+ZEND_API void zend_user_it_get_current_key(zend_object_iterator *_iter, zval ***key TSRMLS_DC);
 ZEND_API void zend_user_it_get_current_data(zend_object_iterator *_iter, zval ***data TSRMLS_DC);
 ZEND_API void zend_user_it_move_forward(zend_object_iterator *_iter TSRMLS_DC);
 ZEND_API void zend_user_it_invalidate_current(zend_object_iterator *_iter TSRMLS_DC);
