@@ -1032,6 +1032,8 @@ static void spl_dllist_it_get_current_key(zend_object_iterator *iter, zval ***ke
 	}
 	MAKE_STD_ZVAL(iterator->intern.key);
 	ZVAL_LONG(iterator->intern.key, (ulong) iterator->traverse_position);
+
+	*key = &iterator->intern.key;
 }
 /* }}} */
 

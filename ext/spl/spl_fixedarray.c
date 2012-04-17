@@ -931,6 +931,8 @@ static void spl_fixedarray_it_get_current_key(zend_object_iterator *iter, zval *
 		}
 		MAKE_STD_ZVAL(iterator->intern.key);
 		ZVAL_LONG(iterator->intern.key, (ulong) iterator->object->current);
+
+		*key = &iterator->intern.key;
 	}
 
 }
