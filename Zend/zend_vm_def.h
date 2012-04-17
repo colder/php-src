@@ -4221,7 +4221,7 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 	USE_OPLINE
 	zend_free_op free_op1;
 	zval *array = EX_T(opline->op1.var).fe.ptr;
-	zval **value;
+	zval **value, **key;
 	char *str_key;
 	uint str_key_len;
 	ulong int_key;
@@ -4310,7 +4310,8 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 			}
 			if (use_key) {
 				if (iter->funcs->get_current_key) {
-					key_type = iter->funcs->get_current_key(iter, &str_key, &str_key_len, &int_key TSRMLS_CC);
+					iter->funcs->get_current_key(iter, &key TSRMLS_CC);
+					key_type = 0;
 					if (UNEXPECTED(EG(exception) != NULL)) {
 						zval_ptr_dtor(&array);
 						HANDLE_EXCEPTION();
@@ -4334,21 +4335,26 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 	}
 
 	if (use_key) {
-		zval *key = &EX_T((opline+1)->result.var).tmp_var;
+		zval *tmpkey = &EX_T((opline+1)->result.var).tmp_var;
 
 		switch (key_type) {
+			case 0: // key is a zval
+				ZVAL_COPY_VALUE(tmpkey, *key);
+				zval_copy_ctor(tmpkey);
+				zval_ptr_dtor(key);
+				break;
 			case HASH_KEY_IS_STRING:
-				Z_STRVAL_P(key) = (char*)str_key;
-				Z_STRLEN_P(key) = str_key_len-1;
-				Z_TYPE_P(key) = IS_STRING;
+				Z_STRVAL_P(tmpkey) = (char*)str_key;
+				Z_STRLEN_P(tmpkey) = str_key_len-1;
+				Z_TYPE_P(tmpkey) = IS_STRING;
 				break;
 			case HASH_KEY_IS_LONG:
-				Z_LVAL_P(key) = int_key;
-				Z_TYPE_P(key) = IS_LONG;
+				Z_LVAL_P(tmpkey) = int_key;
+				Z_TYPE_P(tmpkey) = IS_LONG;
 				break;
 			default:
 			case HASH_KEY_NON_EXISTANT:
-				ZVAL_NULL(key);
+				ZVAL_NULL(tmpkey);
 				break;
 		}
 	}
