@@ -2462,6 +2462,7 @@ struct php_pdo_iterator {
 	pdo_stmt_t *stmt;
 	ulong key;
 	zval *fetch_ahead;
+	zval *zkey;
 };
 
 static void pdo_stmt_iter_dtor(zend_object_iterator *iter TSRMLS_DC)
@@ -2474,6 +2475,12 @@ static void pdo_stmt_iter_dtor(zend_object_iterator *iter TSRMLS_DC)
 		
 	if (I->fetch_ahead) {
 		zval_ptr_dtor(&I->fetch_ahead);
+		I->fetch_ahead = NULL;
+	}
+
+	if (I->zkey) {
+		zval_ptr_dtor(&I->zkey);
+		I->zkey = NULL;
 	}
 
 	efree(I);
@@ -2499,16 +2506,24 @@ static void pdo_stmt_iter_get_data(zend_object_iterator *iter, zval ***data TSRM
 	*data = &I->fetch_ahead;
 }
 
-static int pdo_stmt_iter_get_key(zend_object_iterator *iter, char **str_key, uint *str_key_len,
-	ulong *int_key TSRMLS_DC)
+static void pdo_stmt_iter_get_key(zend_object_iterator *iter, zval ***key TSRMLS_DC)
 {
 	struct php_pdo_iterator *I = (struct php_pdo_iterator*)iter->data;
 
-	if (I->key == (ulong)-1) {
-		return HASH_KEY_NON_EXISTANT;
+	if (I->zkey) {
+		zval_ptr_dtor(&I->zkey);
+		I->zkey = NULL;
 	}
-	*int_key = I->key;
-	return HASH_KEY_IS_LONG;
+
+	MAKE_STD_ZVAL(I->zkey);
+
+	if (I->key == (ulong)-1) {
+		ZVAL_NULL(I->zkey);
+	} else {
+		ZVAL_LONG(I->zkey, I->key);
+	}
+
+	*key = &I->zkey;
 }
 
 static void pdo_stmt_iter_move_forwards(zend_object_iterator *iter TSRMLS_DC)
@@ -2559,6 +2574,7 @@ zend_object_iterator *pdo_stmt_iter_get(zend_class_entry *ce, zval *object, int 
 	I->iter.funcs = &pdo_stmt_iter_funcs;
 	I->iter.data = I;
 	I->stmt = stmt;
+	I->zkey = NULL;
 	stmt->refcount++;
 
 	MAKE_STD_ZVAL(I->fetch_ahead);
