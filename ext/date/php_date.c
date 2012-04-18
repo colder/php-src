@@ -1722,6 +1722,7 @@ typedef struct {
 	zend_object_iterator  intern;
 	zval                 *date_period_zval;
 	zval                 *current;
+	zval                 *key;
 	php_period_obj       *object;
 	int                   current_index;
 } date_period_it;
@@ -1734,6 +1735,11 @@ static void date_period_it_invalidate_current(zend_object_iterator *iter TSRMLS_
 	if (iterator->current) {
 		zval_ptr_dtor(&iterator->current);
 		iterator->current = NULL;
+	}
+
+	if (iterator->key) {
+		zval_ptr_dtor(&iterator->key);
+		iterator->key = NULL;
 	}
 }
 /* }}} */
@@ -1805,11 +1811,16 @@ static void date_period_it_current_data(zend_object_iterator *iter, zval ***data
 
 
 /* {{{ date_period_it_current_key */
-static int date_period_it_current_key(zend_object_iterator *iter, char **str_key, uint *str_key_len, ulong *int_key TSRMLS_DC)
+static void date_period_it_current_key(zend_object_iterator *iter, zval ***key TSRMLS_DC)
 {
 	date_period_it   *iterator = (date_period_it *)iter;
-	*int_key = iterator->current_index;
-	return HASH_KEY_IS_LONG;
+	if (iterator->key) {
+		zval_ptr_dtor(&iterator->key);
+	}
+	MAKE_STD_ZVAL(iterator->key);
+	ZVAL_LONG(iterator->key, iterator->current_index);
+
+	*key = &iterator->key;
 }
 /* }}} */
 
@@ -1868,6 +1879,7 @@ zend_object_iterator *date_object_period_get_iterator(zend_class_entry *ce, zval
 	iterator->date_period_zval = object;
 	iterator->object = dpobj;
 	iterator->current = NULL;
+	iterator->key     = NULL;
 
 	return (zend_object_iterator*)iterator;
 }
