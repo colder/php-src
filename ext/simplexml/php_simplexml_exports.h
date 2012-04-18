@@ -52,6 +52,7 @@ php_sxe_fetch_object(zval *object TSRMLS_DC)
 typedef struct {
 	zend_object_iterator  intern;
 	php_sxe_object        *sxe;
+	zval				  *key;
 } php_sxe_iterator;
 
 #endif /* PHP_SIMPLEXML_EXPORTS_H */
